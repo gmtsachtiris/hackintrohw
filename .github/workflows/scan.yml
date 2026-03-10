@@ -8,7 +8,7 @@ on:
         docker_image:
           description: 'The Docker image to scan'
           required: true
-          default: 'ubuntu/memcached:1.5-20.04_beta'
+          default:  'amazon/aws-for-fluent-bit'
 
 # env:
 #   REGISTRY: ghcr.io
