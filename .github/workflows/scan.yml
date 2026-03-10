@@ -1,5 +1,3 @@
-## Scan a docker image -> get a SARIF/SBOM report
-
 name: SBOM/SCA Scout
 
 on:
@@ -8,12 +6,8 @@ on:
         docker_image:
           description: 'The Docker image to scan'
           required: true
-          default:  'amazon/aws-for-fluent-bit'
-
-# env:
-#   REGISTRY: ghcr.io
-#   IMAGE_NAME: ${{ github.repository }}
-#   SHA: ${{ github.event.pull_request.head.sha || github.event.after }}
+          # Χρησιμοποιούμε το nginx:latest ως προεπιλεγμένο, δοκιμαστικό image
+          default: 'nginx:latest' 
 
 jobs:
   scout:
@@ -33,47 +27,23 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    #   - name: Login to GHCR
-    #     uses: docker/login-action@v3
-    #     with:
-    #       registry: ${{ env.REGISTRY }}
-    #       username: ${{ github.actor }}
-    #       password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Pull the github input image or use the default
-      - name: Pull the image
+      - name: Pull Docker Image
         run: docker pull ${{ github.event.inputs.docker_image }}
 
-      - name: Docker Scout
+      - name: Run Docker Scout to generate SARIF
         uses: docker/scout-action@v1
         with:
-          command: cves,recommendations,compare,sbom
+          command: cves
           image: ${{ github.event.inputs.docker_image }}
-          #only-severities: critical,high # only show critical and high CVEs
-          #only-fixed: true # filter to fixed CVEs
-          exit-code: false  # fail or not based on CVEs found?
           sarif-file: sca_scout.sarif
-          output: sbom_scout.spdx.json
-          format: spdx
 
-      - name: Upload SBOM file as an artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom_scout.spdx.json
-          path: sbom_scout.spdx.json
+      - name: Trim SARIF related locations to limit (1000 max)
+        run: |
+          # Διορθώνει το σφάλμα "rejecting SARIF, as there are more related locations per result than allowed"
+          jq '.runs[].results[]?.relatedLocations |= if . != null and length > 1000 then .[0:1000] else . end' sca_scout.sarif > sca_scout_fixed.sarif
+          mv sca_scout_fixed.sarif sca_scout.sarif
 
-      - name: Upload SARIF file as an artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sca_scout.sarif
-          path: sca_scout.sarif
-
-      # Only available on Github Enterprise or public repositories
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload SARIF result
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: sca_scout.sarif
-          category: Security/SCA
-
-      - name: SBOM upload
-        uses: advanced-security/spdx-dependency-submission-action@v0.1.1
